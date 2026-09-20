@@ -102,5 +102,4 @@ so a write in the original bug would end up _within_ the allocated memory,
 even though it was still in correct.
 
 ASan would only detect writes _outside_ the allocated memory.
-
 */
