@@ -1,3 +1,5 @@
 # Ignore target and build directories recursively
 target/
 build/
+
+.DS_Store
