@@ -23,22 +23,55 @@ int arena_init(Arena *arena, size_t capacity) {
 }
 
 void *arena_alloc(Arena *arena, size_t size, size_t alignment) {
-    if (alignment == 0 ||
-        alignment & (alignment - 1) != 0 ||
+    /* 
+    failure modes:
+    1. alignemnt is zero
+    2. alignment is not a power of 2
+    3. alignment higher than allowed limit
+    */
+    if (alignment == 0 ||                       // alignment is zero (violation)
+        alignment & (alignment - 1) != 0 ||     // alignment is not a power of 2
         alignment > _Alignof(max_align_t)) {
             return NULL;
         }
     
+    // additional failure mode:
+    // integer overflow check: 
+    // arena length would exceed highest number allowed by size_t
+    // note: we don't express as `(arena->len + (alignment - 1) > SIZE_MAX)`
+    // because doing the addition might already overflow the bound.
+    // then we might end up with a false positive on the check
     if (arena->len > SIZE_MAX - (alignment - 1))
         return NULL;
 
+    // let's say arena->len is 0x3fab11, i.e. (4,172,561)
+    // and alignment is 0x4 (i.e., 4)
+    // ~(alignment-1) would be 0xfffffffc
+    // start = 0x3fab14 & 0xfffffffc
+    // translated to binary
+    //   0011 1111 1010 1011 0001 0100 
+    // & 1111 1111 1111 1111 1111 1100
+    // = 0011 1111 1010 1011 0001 0100
+    // back to hex:
+    // = 0x3fab14
+
+    // ensure `start` is a multiple of the alignment (4)
+    // rounding it up as needed
+    // note that `start` is measured in bytes (i.e., a byte offset), not bits
     size_t start =
         (arena->len + alignment - 1) & ~(alignment - 1);
 
+    // ensure our requested allocation doesn't start or end outside of
+    // our upper bound, as specified when arena was initialized
     if (start > arena->cap || size > arena->cap - start)
         return NULL;
 
+    // adjust arena's total length to match our aligned start offset
+    // plus the requested size
     arena->len = start + size;
+
+    // data is a pointer to the existing data in the allocated area.
+    // return a new offset pointer
     return arena->data + start;
 }
 
@@ -46,6 +79,12 @@ void arena_destroy(Arena *arena) {
     free(arena->data);
     *arena = (Arena){0};
 }
+/*
+
+1111 1111
+1111 1110
+
+*/
 
 // void *arena_alloc(Arena *arena, size_t size, size_t alignment) {
 //     // here, `size` should be 17, i think.  1 byte char + 2 8-byte integers.
